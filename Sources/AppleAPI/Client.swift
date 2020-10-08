@@ -1,4 +1,5 @@
 import Foundation
+import ErrorHandling
 import PromiseKit
 import PMKFoundation
 
@@ -17,14 +18,18 @@ public class Client {
 
         public var errorDescription: String? {
             switch self {
+            case .invalidSession:
+                return "Invalid session."
             case .invalidUsernameOrPassword(let username):
                 return "Invalid username and password combination. Attempted to sign in with username \(username)."
-            case .appleIDAndPrivacyAcknowledgementRequired:
-                return "You must sign in to https://appstoreconnect.apple.com and acknowledge the Apple ID & Privacy agreement."
             case .invalidPhoneNumberIndex(let min, let max, let given):
                 return "Not a valid phone number index. Expecting a whole number between \(min)-\(max), but was given \(given ?? "nothing")."
-            default:
-                return String(describing: self)
+            case .incorrectSecurityCode:
+                return "Incorrect security code."
+            case .unexpectedSignInResponse(let statusCode, let message):
+                return "Received an unexpected sign-in response. Status code: \(statusCode). Message: \(message ?? "")."
+            case .appleIDAndPrivacyAcknowledgementRequired:
+                return "You must sign in to https://appstoreconnect.apple.com and acknowledge the Apple ID & Privacy agreement."
             }
         }
     }
@@ -46,12 +51,13 @@ public class Client {
         return firstly { () -> Promise<(data: Data, response: URLResponse)> in
             Current.network.dataTask(with: URLRequest.itcServiceKey)
         }
-        .then { (data, _) -> Promise<(data: Data, response: URLResponse)> in
+        .then { (data, response) -> Promise<(data: Data, response: URLResponse)> in
             struct ServiceKeyResponse: Decodable {
                 let authServiceKey: String
             }
 
-            let response = try JSONDecoder().decode(ServiceKeyResponse.self, from: data)
+            let response = try catchAndMapError(JSONDecoder().decode(ServiceKeyResponse.self, from: data),
+                                                map: { ResponseDecodingError(error: $0, bodyData: data, response: response) })
             serviceKey = response.authServiceKey
 
             return Current.network.dataTask(with: URLRequest.signIn(serviceKey: serviceKey, accountName: accountName, password: password))
@@ -72,7 +78,8 @@ public class Client {
             }
 
             let httpResponse = response as! HTTPURLResponse
-            let responseBody = try JSONDecoder().decode(SignInResponse.self, from: data)
+            let responseBody = try catchAndMapError(JSONDecoder().decode(SignInResponse.self, from: data),
+                                                    map: { ResponseDecodingError(error: $0, bodyData: data, response: response) })
 
             switch httpResponse.statusCode {
             case 200:
@@ -97,7 +104,10 @@ public class Client {
 
         return firstly { () -> Promise<AuthOptionsResponse> in
             return Current.network.dataTask(with: URLRequest.authOptions(serviceKey: serviceKey, sessionID: sessionID, scnt: scnt))
-                .map { try JSONDecoder().decode(AuthOptionsResponse.self, from: $0.data) }
+                .map { data, response in
+                    try catchAndMapError(JSONDecoder().decode(AuthOptionsResponse.self, from: data),
+                                         map: { ResponseDecodingError(error: $0, bodyData: data, response: response) })
+                }
         }
         .then { authOptions -> Promise<Void> in
             switch authOptions.kind {
@@ -179,7 +189,7 @@ public class Client {
         }
         .recover { error throws -> Promise<AuthOptionsResponse.TrustedPhoneNumber> in
             guard case Error.invalidPhoneNumberIndex = error else { throw error }
-            Current.logging.log("\(error.localizedDescription)\n")
+            Current.logging.log("\(error.legibleLocalizedDescription)\n")
             return self.selectPhoneNumberInteractively(from: trustedPhoneNumbers)
         }
     }

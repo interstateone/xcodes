@@ -3,7 +3,7 @@ import PromiseKit
 import Path
 import AppleAPI
 import Version
-import LegibleError
+import ErrorHandling
 
 /// Downloads and installs Xcodes
 public final class XcodeInstaller {

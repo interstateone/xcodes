@@ -3,6 +3,7 @@ import Path
 import Version
 import PromiseKit
 import SwiftSoup
+import ErrorHandling
 
 /// Provides lists of available and installed Xcodes
 public final class XcodeList {
@@ -55,8 +56,9 @@ extension XcodeList {
         }
         .map { (data, response) -> [Xcode] in
             let decoder = JSONDecoder()
-            decoder.dateDecodingStrategy = .formatted(.downloadsDateModified)
-            let downloads = try decoder.decode(Downloads.self, from: data)
+            decoder.dateDecodingStrategy = .formatted(.downloadsDateModified)            
+            let downloads = try catchAndMapError(decoder.decode(Downloads.self, from: data), 
+                                                 map: { ResponseDecodingError(error: $0, bodyData: data, response: response) })
             let xcodes = downloads
                 .downloads
                 .filter { $0.name.range(of: "^Xcode [0-9]", options: .regularExpression) != nil }

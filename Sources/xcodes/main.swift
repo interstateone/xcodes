@@ -3,7 +3,7 @@ import Guaka
 import Version
 import PromiseKit
 import XcodesKit
-import LegibleError
+import ErrorHandling
 import Path
 
 var configuration = Configuration()
@@ -12,6 +12,19 @@ let xcodeList = XcodeList()
 let installer = XcodeInstaller(configuration: configuration, xcodeList: xcodeList)
 
 migrateApplicationSupportFiles()
+
+let errors: [Error] = [
+    DecodingError.keyNotFound(InfoPlist.CodingKeys.bundleID, .init(codingPath: [], debugDescription: "No value associated with key CodingKeys(stringValue: \"bundleID\", intValue: nil) (\"downloads\").")),
+    ResponseDecodingError(
+        error: DecodingError.keyNotFound(InfoPlist.CodingKeys.bundleID, .init(codingPath: [], debugDescription: "No value associated with key CodingKeys(stringValue: \"bundleID\", intValue: nil) (\"downloads\").")),
+        bodyData: Data(),
+        response: URLResponse(url: URL(string: "https://apple.com")!, mimeType: nil, expectedContentLength: 0, textEncodingName: nil)
+    ),
+    POSIXError(.ENOSPC, userInfo: [NSLocalizedDescriptionKey: "The operation couldn’t be completed. No space left on device."]),
+]
+for error in errors {
+    print("\(error.legibleLocalizedDescription)(\(error.legibleDescription))\n")
+}
 
 // This is awkward, but Guaka wants a root command in order to add subcommands,
 // but then seems to want it to behave like a normal command even though it'll only ever print the help.
@@ -27,7 +40,7 @@ let installed = Command(usage: "installed",
             exit(0)
         }
         .catch { error in
-            print(error.legibleLocalizedDescription)
+            print("\(error.legibleLocalizedDescription) (\(error.legibleDescription))")
             exit(1)
         }
 
@@ -48,7 +61,7 @@ let select = Command(usage: "select <version or path>",
                               """) { flags, args in
     selectXcode(shouldPrint: flags.getBool(name: "print-path") ?? false, pathOrVersion: args.joined(separator: " "))
         .catch { error in
-            print(error.legibleLocalizedDescription)
+            print("\(error.legibleLocalizedDescription) (\(error.legibleDescription))")
             exit(1)
         }
 
@@ -70,7 +83,7 @@ let list = Command(usage: "list",
         exit(0)
     }
     .catch { error in
-        print(error.legibleLocalizedDescription)
+        print("\(error.legibleLocalizedDescription) (\(error.legibleDescription))")
         exit(1)
     }
 
@@ -84,7 +97,7 @@ let update = Command(usage: "update",
         installer.updateAndPrint()
     }
     .catch { error in
-        print(error.legibleLocalizedDescription)
+        print("\(error.legibleLocalizedDescription) (\(error.legibleDescription))")
         exit(1)
     }
 
@@ -127,7 +140,7 @@ let install = Command(usage: "install <version>",
                     \([standardOutput, standardError].compactMap { $0 }.joined(separator: "\n"))
                     """)
             default:
-                Current.logging.log(error.legibleLocalizedDescription)
+                print("\(error.legibleLocalizedDescription) (\(error.legibleDescription))")
             }
 
             exit(1)
@@ -143,7 +156,7 @@ let uninstall = Command(usage: "uninstall <version>",
         let versionString = args.joined(separator: " ")
     installer.uninstallXcode(versionString)
         .catch { error in
-            print(error.legibleLocalizedDescription)
+            print("\(error.legibleLocalizedDescription) (\(error.legibleDescription))")
             exit(1)
         }
 
